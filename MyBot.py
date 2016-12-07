@@ -1,212 +1,102 @@
-from hlt import *
-from networking import *
+#from pandas.hashtable import na_sentinel
+
+import hlt
+from hlt import NORTH, EAST, SOUTH, WEST, STILL, Move, Square
+import random
 import logging
-import math
-import time
+from collections import namedtuple
 
-myID, gameMap = getInit()
+myID, game_map, targetCoord = hlt.get_init()
+hlt.send_init("BrutalBevster")
+logging.basicConfig(filename=str(myID) + '.log', level=logging.DEBUG)
 
-#logging.basicConfig(filename=str(myID) + '.log', level=logging.DEBUG)
 
-sendInit("BevsterBotReturns")
-
-def inCluster(location):
-    for d in CARDINALS:
-        neighbour_site = gameMap.getSite(location, d)
-        if neighbour_site.owner != myID:
-            return False
-    return True
-
-def find_nearest_edge(location,ownerMatrix):
-    direction = 1
-    max_distance = min(gameMap.width, gameMap.height)
-
-    for d in CARDINALS:
+def find_nearest_enemy_direction(square):
+    direction = NORTH
+    max_distance = min(game_map.width, game_map.height) / 2
+    for d in (NORTH, EAST, SOUTH, WEST):
         distance = 0
-        current = location
-        site = gameMap.getSite(current, d)
-
-        while site.owner == myID and distance < max_distance:
-            distance += 2
-            current = gameMap.getLocation(current, d)
-            site = gameMap.getSite(current)
-
+        current = square
+        while (current.owner == myID or current.owner==0) and distance < max_distance:
+            distance += 1
+            current = game_map.get_target(current, d)
         if distance < max_distance:
             direction = d
             max_distance = distance
-
-
-    # logging.debug("Moving: " + str(direction))
     return direction
 
 
-
-def find_nearest_enemy(location,ownerMatrix):
-    direction = NORTH
-    max_distance = min(gameMap.width, gameMap.height)
-    site = gameMap.getSite(location)
-
-    bestAngle = 0
-
-    for y in range(gameMap.height):
-        for x in range(gameMap.width):
-            testLocation = Location(x, y)
-            #testLocation = gameMap.getSite(location)
-            dist = gameMap.getDistance(location,testLocation)
-            if dist < max_distance and ownerMatrix[y][x]!=myID and ownerMatrix[y][x]!=0:
-                max_distance = dist
-
-                bestAngle = gameMap.getAngle(location,testLocation)*(180/math.pi)
-                if bestAngle < 0.0:
-                    bestAngle += 360.0
-
-    if bestAngle < 90:
-        direction = [1,2]
-    elif bestAngle < 180 and bestAngle >= 90:
-        direction = [2,3]
-    elif bestAngle >= 180 and bestAngle < 270:
-        direction = [3,4]
+def heuristic(square):
+    if square.owner == 0 and square.strength > 0:
+        return square.production / square.strength
     else:
-        direction = [4,1]
-
-    bestDir=0
-    maxRatio = 0
-    for d in direction:
-
-        neighbour_site = gameMap.getSite(location, d)
-
-        if inCluster(location)==False:
-            if neighbour_site.owner != myID and neighbour_site.strength < site.strength:
-                if neighbour_site.strength == 0:
-                    return d
-                else:
-                    ratio = float(neighbour_site.production) / float(neighbour_site.strength)
-                    if ratio > maxRatio:
-                        maxRatio = ratio
-                        bestDir = d
-                        foundSite = True
-        else:
-            if neighbour_site.strength == 0:
-                return d
-            else:
-                ratio = float(neighbour_site.production) / float(neighbour_site.strength)
-                if ratio > maxRatio:
-                    maxRatio = ratio
-                    bestDir = d
-                    foundSite = True
-
-    return bestDir
+        # return total potential damage caused by overkill when attacking this square
+        return sum(neighbor.strength for neighbor in game_map.neighbors(square) if neighbor.owner not in (0, myID))
 
 
+def get_move(square):
+    target, direction = max(((neighbor, direction) for direction, neighbor in enumerate(game_map.neighbors(square))
+                             if neighbor.owner != myID),
+                            default=(None, None),
+                            key=lambda t: heuristic(t[0]))
 
 
-def findHighestAvailableRatioNeighbour(location,ownerMatrix):
-    site = gameMap.getSite(location)
+    if target is not None and target.strength < square.strength:
+        return Move(square, direction)
+    elif square.strength < square.production * 5: #and square.strength<100
+        return Move(square, STILL)
 
-    maxRatio = 0.0
-    maxRatioCardinal = -1.0
-    foundSite = False
-
-    for d in CARDINALS:
-        neighbour_site = gameMap.getSite(location, d)
-
-        if neighbour_site.owner != myID and neighbour_site.strength < site.strength:
-            if neighbour_site.strength == 0:
-                return d
-            else:
-                ratio = float(neighbour_site.production) / float(neighbour_site.strength)
-                if ratio > maxRatio:
-                    maxRatio = ratio
-                    maxRatioCardinal = d
-                    foundSite = True
-
-    if foundSite:
-        neighbour_site = gameMap.getSite(location, maxRatioCardinal)
-        return maxRatioCardinal
+    border = any(neighbor.owner != myID for neighbor in game_map.neighbors(square))
+    if not border:
+        #if square.strength < square.production * 2:
+        #    return Move(square, STILL)
+        #else:
+        return Move(square, find_nearest_enemy_direction(square))
     else:
-        d = find_nearest_edge(location,ownerMatrix)
-        return d
-
-def move(location,ownerMatrix):
-    site = gameMap.getSite(location)
-
-    strength = site.strength
-    production = site.production
-
-    must_move = False
-    if strength > 150:
-        must_move = True
+        # wait until we are strong enough to attack
+        return Move(square, STILL)
 
 
-    if inCluster(location):
+def find_nearest_dense(square,targetCoord):
 
-        must_move = False
-        if strength > 100:
-            must_move = True
-
-        if strength < production * 4 and must_move == False:
-            return Move(location, STILL)
-        # If in middle of cluster move to nearest edge site
-        return Move(location, find_nearest_edge(location,ownerMatrix))
-        #return Move(location, findBestDirection(location))
+    direc = NORTH
+    if (targetCoord.x- square.x)>0:
+        neighbour = game_map.get_target(square, EAST)
+        direc = EAST
     else:
+        neighbour = game_map.get_target(square, WEST)
+        direc = WEST
 
-        if strength < production * 5 and must_move == False:
-            return Move(location, STILL)
+    maxStrength = neighbour.strength
 
-        availableCardinal = findHighestAvailableRatioNeighbour(location,ownerMatrix)
-
-        if availableCardinal > 0:
-
-            neighbour = gameMap.getSite(location, availableCardinal)
-            myLocation = gameMap.getSite(location)
-            if neighbour.strength > myLocation.strength and must_move == False:
-                return Move(location, STILL)
-
-            return Move(location, availableCardinal)
+    if (targetCoord.y - square.y) < 0:
+        neighbour = game_map.get_target(square, NORTH)
+        if neighbour.strength<maxStrength:
+            direc = NORTH
+    else:
+        neighbour = game_map.get_target(square, SOUTH)
+        if neighbour.strength<maxStrength:
+            direc = SOUTH
 
 
-    #logging.debug("Staying still..")
-    return Move(location, STILL)
+    logging.debug(str(direc) + " " + str(square) + " " + str(targetCoord))
+    return Move(square, direc)
 
-startVal = 0
-step1 = 1
-step2 = 1
-startStepping = False
-endHeight = gameMap.height
-
-ownerMatrix = []
+target = False
 while True:
-    moves = []
-    gameMap = getFrame()
-    startTime = time.time()
+    game_map.get_frame()
+    if target==False:
+        #logging.debug(ma)
+        #first = False
+        moves = [find_nearest_dense(square,targetCoord) for square in game_map if square.owner == myID]
+        for square in game_map:
+            if square.x == targetCoord.x and square.y == targetCoord.y and square.owner == myID:
+                target = True
+        hlt.send_frame(moves)
 
-    for y in range(startVal,endHeight,step1):
-        for x in range(startVal,gameMap.width,step2):
-            timeNow = time.time()
-            timeDiff = (timeNow-startTime)
-            location = Location(x, y)
-            #logging.debug(timeDiff)
-            if timeDiff < 0.9:
-                if gameMap.getSite(location).owner == myID:
-                    moves.append(move(location,ownerMatrix))
-            else:
-                startStepping = True
-                break
-
-
-    if startStepping:
-        if step1 == 1:
-            startVal = 0
-            step1 = 2
-            step2 = 1
-        else:
-            startVal = 0
-            step1 = 1
-            step2 = 2
     else:
-        step1 = 1
-        step2 = 1
-        startVal= 0
+        moves = [get_move(square) for square in game_map if square.owner == myID]
+        hlt.send_frame(moves)
 
-    sendFrame(moves)
+
+

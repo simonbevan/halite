@@ -1,0 +1,16 @@
+ --- Init ---
+BrutalBevster
+ --- Bot used 1272 milliseconds ---
+-----------------------------------------------------------------------------
+ --- Frame #1 ---
+Traceback (most recent call last):
+ --- Bot used 3 milliseconds ---
+ERRORED!
+Response received (if any):
+Traceback (most recent call last):
+ --- Bot was killed. Below is the rest of its output (if any): ---
+  File "MyBot.py", line 96, in <module>
+    moves,target = [find_nearest_dense(square,targetCoord) for square in game_map if square.owner == myID]
+ValueError: not enough values to unpack (expected 2, got 1)
+
+ --- End bot output ---

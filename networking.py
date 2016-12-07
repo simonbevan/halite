@@ -1,14 +1,14 @@
-from hlt import *
+from hlt_old import *
 import socket
 import traceback
 import struct
 from ctypes import *
 import sys
-import time
 
 _productions = []
 _width = -1
 _height = -1
+
 
 def serializeMoveSet(moves):
     returnString = ""
@@ -73,28 +73,9 @@ def getInit():
     deserializeProductions(getString())
     m = deserializeMap(getString())
 
-    startTime = time.time()
-    ownerMatrix = []
-    ratioMatrix = []
-    #gameMap = getFrame()
-
-    # for y in range(gameMap.height):
-    #     ownerMatrix.append([])
-    #     ratioMatrix.append([])
-    #     for x in range(gameMap.width):
-    #         location = Location(x, y)
-    #         ownerMatrix[-1].append(gameMap.getSite(location).owner)
-    #         if gameMap.getSite(location).strength > 0:
-    #             ratioMatrix[-1].append(gameMap.getSite(location).production / gameMap.getSite(location).strength)
-
-    timeNow = time.time()
-    timeDiff = (timeNow - startTime)
-    while timeDiff < 2:
-        timeNow = time.time()
-        timeDiff = (timeNow - startTime)
-
-
+    #gm = m.get_frame()
     return (playerTag, m)
+
 
 def sendInit(name):
     sendString(name)
@@ -104,5 +85,3 @@ def getFrame():
 
 def sendFrame(moves):
     sendString(serializeMoveSet(moves))
-
-
