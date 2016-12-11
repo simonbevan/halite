@@ -90,11 +90,14 @@ class GameMap:
         dy = min(abs(sq1.y - sq2.y), sq1.y + self.height - sq2.y, sq2.y + self.height - sq1.y)
         return dx + dy
 
-    def get_squareDense(self, square):
-        squareDense = sum(
-            neighbor.production / neighbor.strength if neighbor.production != 0  else neighbor.strength for neighbor in
-            self.neighbors(square)) \
-                      + square.production / square.strength if square.production != 0  else square.strength
+    def get_squareDense(self, square, denArea,prodWeight,squareWeight):
+
+        squareDense = 0
+        for neighbour in self.neighbors(square, n=denArea, include_self=True):
+            if neighbour.strength != 0:
+                squareDense+=(prodWeight*neighbour.production) / (squareWeight*neighbour.strength)
+            else:
+                squareDense+=neighbour.production
         SquareDense = namedtuple('SquareDense', 'x y sd')
         return SquareDense(square.x, square.y, squareDense)
 
@@ -119,27 +122,44 @@ def get_string():
 #     dy = min(abs(sq1.y - sq2.y), sq1.y + height - sq2.y, sq2.y + height - sq1.y)
 #     return dx + dy
 
-def get_init():
+def get_init(doInit,denArea, prodWeight, squareWeight):
     playerID = int(get_string())
     m = GameMap(get_string(), get_string())
     mySquare = []
-    for square in m:
-        if square.owner == playerID:
-            mySquare = square
-            break
 
-    sd = [m.get_squareDense(square) for square in m]
-    sDense = [i.sd for i in sd]
-    minAreas = np.where(max(sDense) == np.array(sDense))[0]
-    minDist = 1000
-    coords = mySquare
-    for mA in minAreas:
-        dist = m.get_distance(mySquare,sd[mA])
-        if dist<minDist:
-            minDist =dist
-            coords = sd[mA]
+    coords = []
+    areaStrength = 0
+    totalStrength = 0
+    totalProd = 0
+    if doInit:
+        for square in m:
+            if square.owner == playerID:
+                mySquare = square
+                sqDe = m.get_squareDense(square,3,1,1)
+                areaStrength = sqDe.sd
+                break
 
-    return playerID, m, coords
+        sd = [m.get_squareDense(square,denArea,prodWeight,squareWeight) for square in m]
+        sDense = [i.sd for i in sd]
+        minAreas = np.where(max(sDense) == np.array(sDense))[0]
+        minDist = 1000
+        coords = mySquare
+        for mA in minAreas:
+            dist = m.get_distance(mySquare,sd[mA])
+            # xDelt = mySquare.x-sd[mA].x
+            # yDelt = mySquare.y - sd[mA].y
+            # dist =(xDelt*xDelt - yDelt*yDelt)**(1/2)
+            if dist<minDist:
+                minDist =dist
+                coords = sd[mA]
+
+
+        for square in m:
+            totalStrength+=square.strength
+            totalProd += square.production
+
+
+    return playerID, m, coords,totalStrength,totalProd,areaStrength
 
 
 def send_init(name):
